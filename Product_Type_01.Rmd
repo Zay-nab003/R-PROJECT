@@ -1,0 +1,594 @@
+---
+title: "Product_Data_01"
+author: "Salami Zainab"
+date: "2024-07-02"
+goal: "PREDICTING SALES OF FOUR DIFFERENT PRODUCT TYPES"
+output:
+  html_document:
+    highlight: tango
+    number_sections: true
+    theme: cosmo
+    toc: true
+    toc_depth: 4
+    code_folding: hide
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# INSTALLING PACKAGES AND LOADING LIBRARIES
+
+```{r warning=FALSE,message=FALSE}
+library('kableExtra')
+library('corrplot')
+library('patchwork')
+library('ggplot2')
+library('dplyr')
+library('fastDummies')
+library('kableExtra')
+library('gridExtra')
+```
+
+# INTRODUCTION
+
+In this project, I analyze historical sales data to predict future sales volumes for four product types: PCs, Laptops, Netbooks, and Smartphones. The goal is to provide insights into how these products perform against each other, while also assessing the impact of service and customer reviews on their sales.
+
+Using regression techniques, I will apply and compare four machine learning algorithms (Brnn, RRF, GBM and Ranger) to determine the best model for accurate sales predictions. This analysis will help Blackwell Electronics better understand how product types influence sales and provide actionable insights for their sales strategy.
+
+
+# LOADING DATASET
+```{r}
+#loading the dataset from csv file
+EP <- read.csv('existingproductattributes2017.csv')
+NP <- read.csv('newproductattributes2017.csv')
+```
+
+##EP Dataset
+
+##Checking for attributes for EP dataset
+```{r}
+attributes(EP)
+```
+## Checking the structure of EP
+```{r}
+str(EP)
+```
+## Checking the summary of EP
+```{r}
+summary(EP)
+```
+
+
+#DATA PREPROCESSING/DATA PREPARATION
+##Checking for Duplicates
+```{r}
+duplicating <- EP[duplicated(EP), ]
+duplicating
+```
+*I observed that there are no duplicates in the dataset
+##Checking for Missing Values
+```{r}
+colSums(is.na(EP))
+```
+*I observed there are 15 NA's in the BestSellersRank
+
+##Replace NA values in BestSellersRank with 0
+```{r}
+EP_NA_BestSellers <- EP %>%
+  mutate(BestSellersRank = ifelse(is.na(BestSellersRank), 0, BestSellersRank))
+```
+
+## NP Dataset
+
+## Displaying the attributes of NP
+```{r}
+attributes(NP)
+```
+
+## Displaying the structure of NP
+```{r}
+str(NP)
+```
+
+## Displaying the summary of NP
+```{r}
+summary(NP)
+```
+
+## Displaying the column headers of NP
+```{r}
+head(NP)
+```
+
+```{r}
+NP_V1 <- NP[-c(4,5,7,10,12,18)]
+```
+*The above statistical distribution shows that the variables not needed have been removed.
+
+## Displaying structure of NP_V1
+```{r}
+str(NP_V1)
+```
+
+## Checking for Samples
+```{r}
+x = EP$Volume
+#histogram, Q-Q plot, and boxplot
+par(mfrow = c(1, 3))
+hist(x, main = "Histogram")
+boxplot(x, main = "Boxplot")
+qqnorm(x, main = "Normal Q-Q plot")
+```
+Checking samples we observed that the outliers are associated with Accessories and Game Console which are not part of our target Product Type and constitute about 2.5 percent of our entire dataset, we would therefore delete these two observations.
+
+```{r}
+##Deleting the 50th and 73rd rows that contain outliers
+EP_No_Outlier_No_Volume <- EP[-c(50,73), ]
+head(EP_No_Outlier_No_Volume)
+```
+
+We look at the summary
+```{r warning=FALSE, message=FALSE}
+summary(EP_No_Outlier_No_Volume$Volume)
+```
+
+We dumify the ProductType to convert a categorical variable with different categories referring to different classes of the ProductType to variables that are actually boolean varables telling me if these variables are true or false
+```{r}
+EP_existing_copy_process <- dummy_cols(EP_No_Outlier_No_Volume, select_columns = 'ProductType')
+```
+
+This is the table that contains the Product Type and the volume
+```{r}
+EP_volume_copy <- EP_No_Outlier_No_Volume[, -c(2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17)]
+head(EP_volume_copy)
+```
+
+```{r}
+kable(EP_volume_copy) %>%
+#kable(digits = 0)
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), fixed_thead = T)
+```
+
+```{r warning=FALSE, message=FALSE}
+EP_volume_copy %>%
+  group_by(ProductType) %>%
+  summarise(Volume = sum(Volume))
+```
+
+
+```{r}
+EP_existing_copy_process_cor<- EP_existing_copy_process[, -c(1)]
+```
+
+
+```{r warning = FALSE, message=FALSE}
+str(EP_existing_copy_process_cor)
+```
+
+The above statistical distribution shows that the outliers have been removed.
+
+```{r warning = FALSE, message=FALSE}
+EP_Product <- EP_existing_copy_process_cor[, -c(2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,19,20,21,22,23,24,25,26,27,28,29,18)]
+```
+
+On another variable created we also dropped some variables as a result of collinearlity and  variable importance of the predictors to avoid over fitting in our Model
+```{r}
+EP_Reorder <- EP_existing_copy_process_cor[, -c(1,2,4,6,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30)]
+```
+
+```{r}
+EP_Reorder
+```
+
+
+```{r}
+str(EP_existing_copy_process)
+```
+
+
+## Correlation Matrix to select the most important variables
+```{r}
+library(corrplot)
+corrData <- cor(EP_existing_copy_process_cor)
+```
+
+```{r out.width = c('30000px', '30000px')}
+M = cor(corrData)
+
+corrplot(M, method = 'number', number.digits = 2, tl.cex = 0.5, number.cex = 0.4, addCoef.col = 0.1)
+```
+
+From the Correlation Matrix above, we examined the correlation indices of all the attributes in our dataset with respect to the Volume which is our Target and decided to remove every attributes that will not have any positive impact on our Model. At the end we got three most important variable: X5starReview, x3starReview, x1starReview, Positive Review
+
+
+```{r}
+# Histogram of Different Product Type with respect to Volume
+ggplot(EP_No_Outlier_No_Volume, aes(x=Volume)) + geom_histogram(color='darkblue', fill='lightblue', bins=20 ) + facet_wrap(~ProductType)
+```
+
+Bivariate Analysis: We check for relationship between the most important attributes with respect to Volume
+
+```{r}
+ggplot(EP_No_Outlier_No_Volume) + geom_point(aes(y=x5StarReviews, x=Volume, col=ProductType)) + geom_smooth(method = "lm", se=FALSE, aes(y=x5StarReviews, x=Volume)) + labs(title= "RELATIONSHIP BETWEEN X5STARREVIEWS & VOLUME")
+```
+
+```{r}
+##Deleting the 23rd and 48th rows that contain outliers
+EP_x3StarReviews <- EP_No_Outlier_No_Volume[-c(23,48), ]
+```
+
+```{r}
+ggplot(EP_x3StarReviews) + geom_point(aes(y=x3StarReviews, x=Volume, col=ProductType)) + geom_smooth(method = "lm", se=FALSE, aes(y=x3StarReviews, x=Volume)) + labs(title= "RELATIONSHIP BETWEEN X3STARREVIEWS & VOLUME")
+```
+
+```{r}
+##Deleting the 34th and 46th rows that contain outliers
+EP_Reviews <- EP_No_Outlier_No_Volume[-c(34,46), ]
+```
+
+
+```{r}
+ggplot(EP_Reviews) + geom_point(aes(y=x1StarReviews, x=Volume, col=ProductType)) + geom_smooth(method = "lm", se=FALSE, aes(y=x1StarReviews, x=Volume)) + labs(title= "RELATIONSHIP BETWEEN x1STARREVIEWS & VOLUME")
+```
+
+
+```{r}
+##Deleting the 34th and 46th rows that contain outliers
+EP_PositiveReviews <- EP_No_Outlier_No_Volume[-c(48), ]
+```
+
+
+```{r warning=FALSE, message=FALSE}
+ggplot(EP_PositiveReviews) + geom_point(aes(y=PositiveServiceReview, x=Volume, col=ProductType)) + geom_smooth(method = "lm", se=FALSE, aes(y=PositiveServiceReview, x=Volume)) + labs(title= "RELATIONSHIP BETWEEN POSITIVE SERVICE REVIEW & VOLUME")
+```
+##FEATURE SELECTION
+```{r}
+EP_Process_Model <- EP_existing_copy_process_cor[ -c(3,4,6,9,11,18,19,20,21,22,23,24,25,26,27,28,29)]
+```
+
+```{r}
+str(EP_Process_Model)
+```
+
+The aim of this chapter in find the best model that represents our data to predict the Sale Volume if our products. We will also check which are the most representative features that will help our model perform optimally thereby reducing 
+
+```{r warning=FALSE, message=FALSE}
+library(caret)
+set.seed(107)
+inTrain <- createDataPartition(
+EP_Process_Model$Volume, p = .75, list = FALSE
+## The outcome data are needed
+## The percentage of data in the training set
+)
+training <- EP_Process_Model[inTrain,]
+testing <- EP_Process_Model[-inTrain,]
+nrow(training)
+nrow(testing)
+```
+
+# MODELLING
+## We started building the Model using Ranger, Gradient Boosting, Bayesian Regularized Neural Networks, and Regularized Random Forest 
+##Ranger
+```{r warning=FALSE, message=FALSE}
+ctrl <- trainControl(
+method = "repeatedcv", number = 5,
+repeats = 1
+)
+set.seed(123)
+Ranger_Volume <- train(Volume ~ .,
+  data = training,
+  method = "ranger",
+  preProc = c("center", "scale"),
+  tuneLength = 5,
+  trControl = ctrl
+
+)
+save(file = 'Ranger_Volume.rdata')
+```
+
+
+```{r}
+Ranger_Volume
+```
+##Predicting Volume using the gbm_Volume model
+```{r}
+Ranger_Volume_predict <- predict(Ranger_Volume,testing)
+```
+
+```{r}
+str(testing$Volume)
+```
+
+
+##Bayesian Regularized Neural Networks
+```{r warning=FALSE, message=FALSE}
+
+set.seed(123)
+Brnn_Volume <- train(Volume ~ .,
+  data = training,
+  method = "brnn",
+  preProc = c("center", "scale"),
+  tuneLength = 5,
+  trControl = ctrl
+
+)
+save(file = 'brnn_Volume.rdata')
+```
+
+
+```{r}
+Brnn_Volume
+```
+##Predicting Volume using the Brnn_Volume model
+```{r}
+Brnn_Volume_predict <- predict(Brnn_Volume,testing)
+```
+
+```{r}
+str(testing$Volume)
+```
+
+
+##RRF
+```{r warning=FALSE, message=FALSE}
+library(RRF)
+
+set.seed(123)
+RRF_Volume <- train(Volume ~ .,
+  data = training,
+  method = "RRF",
+  preProc = c("center", "scale"),
+  tuneLength = 5,
+  trControl = ctrl
+
+)
+save(file = 'RRF_Volume.rdata')
+```
+
+
+```{r}
+RRF_Volume
+```
+##Predicting Volume using the RRF_Volume model
+```{r}
+RRF_Volume_predict <- predict(RRF_Volume,testing)
+```
+
+```{r}
+str(testing$Volume)
+```
+
+
+##Gradient Boosting
+```{r}
+
+set.seed(123)
+gbm_Volume <- train(Volume ~ .,
+  data = training,
+  method = "gbm",
+  preProc = c("center", "scale"),
+  tuneLength = 5,
+  trControl = ctrl
+
+)
+save(file = 'gbm_Volume.rdata')
+```
+
+
+```{r}
+gbm_Volume
+```
+##Predicting Volume using the gbm_Volume model
+```{r}
+gbm_Volume_predict <- predict(gbm_Volume,testing)
+```
+
+```{r}
+str(testing$Volume)
+```
+## Resampling
+```{r}
+# RESAMPLING FOR THE BEST PERFORMING MODEL
+resamps_Brand <- resamples(list(ranger = Ranger_Volume, gbm = gbm_Volume, RRF = RRF_Volume, brnn = Brnn_Volume))
+summary(resamps_Brand)
+```
+
+## Model Evaluation
+
+Now that we have trained several models, validated all of them and selected the best performing model based on R-Squared value. Regularized Random Forest will be used as the best performing Model for future predictions Tuning with the best Hyper parameters
+
+```{r warning=FALSE,message=FALSE}
+RRFGrid <- expand.grid(mtry = 11, 
+          coefReg = 0.01,
+          coefImp = 0.)
+set.seed(123)
+RRF_Volume_Final <- train(Volume ~ .,
+              data = training,
+              method = "RRF",
+              #inTrain = round(nrow(training) * .75),
+              preProc = c("center", "scale"),
+              trControl = ctrl,
+              verbose = FALSE,
+              tuneGrid = RRFGrid
+)
+```
+
+```{r}
+RRF_Volume_Final
+```
+
+```{r}
+RRFRegression <- predict(RRF_Volume_Final, newdata = testing)
+str(RRFRegression)
+```
+
+```{r}
+testing$Volume
+```
+
+```{r}
+RRFRegression
+```
+
+
+## Performance Metrics
+
+It represents the standard deviation of the differences between the predicted and actual values. Lower values of RMSE indicate that the model is making 
+
+```{r warning=FALSE, message=FALSE}
+round(RMSE(testing$Volume, RRFRegression))
+round(MAE(testing$Volume, RRFRegression))
+```
+
+# Predictions
+## This refers to the process of using a trained model to make predictions on new, unseen data. This involves providing the model with input data and using its learned parameters to produce a prediction of the output. Predictions can be used for various purposes, such as classifying new data points into different categories, estimating a continuous target value, or forecasting future values. The quality of the predictions depends on the accuracy of the model and the quality of the input.
+
+We will carry out a final prediction against new_product data set
+```{r}
+RRFPredictionsFinal <- predict(RRF_Volume_Final, newdata = NP_V1)
+str(RRFPredictionsFinal)
+```
+
+```{r}
+RRFPredictionsFinal
+```
+We have been able to predict the Volume of the New data set.
+
+
+We created a new dataset that contains ProductType and the predicted Volume for further analysis since our target is to predict some specific Product Types with respect to the Predicted volume
+
+```{r}
+NP_Products_Types_Predictions <- cbind(NP_V1$ProductType, RRFPredictionsFinal)
+# Creating a header ProductTypes for the new data set as well as renaming the predicted values to Predicted_Volume and finally converting to a dataframe
+colnames(NP_Products_Types_Predictions)[1] = "ProductTypes"
+colnames(NP_Products_Types_Predictions)[2] = "Predicted_Volume"
+# NP_Products_Types_Predictions
+
+# Convert NP_Products_Types_Predictions to dataframe named NP_Products_Types_PredictionsFinal
+NP_Products_Types_PredictionsFinal <- NP_Products_Types_Predictions %>% as.data.frame()
+kable(NP_Products_Types_PredictionsFinal)%>%
+#kable(head(NP_Products_Types_PredictionsFinal)%>%))
+#kable(producttype_volume_df2)%>%
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), fixed_thead = T)
+```
+Here is a dataset that contains all the product types
+```{r warning=FALSE,message=FALSE}
+# we converted the Predicted_Volume attribute to numerical datatype so we can group and summarize the dataset
+NP_Products_Types_PredictionsFinal$Predicted_Volume <- as.integer(NP_Products_Types_PredictionsFinal$Predicted_Volume)
+kable(NP_Products_Types_PredictionsFinal) %>%
+#kable(digits = 0)
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), fixed_thead = T)
+```
+
+
+We made a selection of the specified product type that are contained in the dataset
+```{r}
+#selecting only product of interest in the table producttype_volume_df2
+Product_Type_Volume_df2 <- filter(NP_Products_Types_PredictionsFinal, (ProductTypes == 'PC' | ProductTypes == 'Netbook' | ProductTypes == 'Laptop' | ProductTypes == 'Smartphone')) %>% mutate_if(is.numeric, round)
+
+library(kableExtra)
+#Product_Type_Volume_df2
+kable(Product_Type_Volume_df2) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), fixed_thead = T)
+```
+ 
+*We will convert Predicted_Volume from categorical to numerical data type
+
+```{r}
+Product_Type_Volume_df2$Predicted_Volume<-as.numeric(Product_Type_Volume_df2$Predicted_Volume)
+```
+
+ We sorted the product type individually starting with PC
+```{r}
+#Removing multiple rows in a dataset
+NP_Products_Types_PredictionsFinal_Grouped_Products_PC <- Product_Type_Volume_df2[-c(3,4,5,6,7,8,9,10,11,12,13,14,15),]
+
+NP_Products_Types_PredictionsFinal_Grouped_Products_PC
+```
+
+```{r warning=FALSE,message=FALSE}
+total_predicted_PC <- NP_Products_Types_PredictionsFinal_Grouped_Products_PC %>% group_by(ProductTypes) %>% 
+  summarise("Total Volume PC" = sum(Predicted_Volume))
+#total_predicted_PC
+```
+
+we sorted the Laptop
+```{r}
+#Removing multiple rows in a dataset
+NP_Products_Types_PredictionsFinal_Grouped_Products_Laptop <- Product_Type_Volume_df2[-c(1,2,6,7,8,9,10,11,12,13,14,15),]
+
+NP_Products_Types_PredictionsFinal_Grouped_Products_Laptop
+```
+
+```{r}
+total_predicted_Laptop <- NP_Products_Types_PredictionsFinal_Grouped_Products_Laptop %>% group_by(ProductTypes) %>%
+summarise("Total Volume Laptop" = sum(Predicted_Volume))
+#total_predicted_Smartphone
+```
+
+
+We sorted the Netbook
+```{r}
+#Removing multiple rows in a dataset
+NP_Products_Types_PredictionsFinal_Grouped_Products_Netbook <- Product_Type_Volume_df2[-c(1,2,3,4,5,10,11,12,13,14,15),]
+
+NP_Products_Types_PredictionsFinal_Grouped_Products_Netbook
+```
+
+```{r}
+total_predicted_Netbook <- NP_Products_Types_PredictionsFinal_Grouped_Products_Netbook %>% group_by(ProductTypes) %>%
+summarise("Total Volume Netbook" = sum(Predicted_Volume))
+#total_predicted_Netbook
+```
+
+We sorted the Smartphone
+```{r}
+#Removing multiple rows in a dataset
+NP_Products_Types_PredictionsFinal_Grouped_Products_Smartphone <- Product_Type_Volume_df2[-c(1,2,3,4,5,6,7,8,9,10,11),]
+
+NP_Products_Types_PredictionsFinal_Grouped_Products_Smartphone
+```
+
+```{r}
+total_predicted_Smartphone <- NP_Products_Types_PredictionsFinal_Grouped_Products_Smartphone %>% group_by(ProductTypes) %>%
+summarise("Total Volume Smartphone" = sum(Predicted_Volume))
+#total_predicted_Smartphone
+```
+
+
+I carried out the Grouping and got the total for each product
+```{r}
+library(kableExtra)
+ProductTypes <- c("PC", "Laptop", "Netbook", "Smartphone")
+VolumeSales <- c("874", "484" ,"1380", "182")
+
+NP_Products_Types_PredictionsFinal_Grouped_Products <- data.frame(ProductTypes, VolumeSales)
+
+#kable(NP_Products_Types_PredictionsFinal_Grouped_Products)%>%
+  #kable_styling(bootstrap_options = c('striped', 'hover', 'condensed', 'responsive'), fixed_thead = T)
+# we converted the Predicted_Volume attribute to numerical datatype so that we can group and summarize the dataset
+NP_Products_Types_PredictionsFinal_Grouped_Products$VolumeSales <-
+as.numeric(NP_Products_Types_PredictionsFinal_Grouped_Products$VolumeSales)
+```
+
+Below is the table that contains only the target product types
+```{r}
+#NP_Products_Types_PredictionsFinal_Grouped_Products
+kable(NP_Products_Types_PredictionsFinal_Grouped_Products) %>%
+kable_styling(bootstrap_options = c('striped', 'hover', 'condensed', 'responsive', wraptable_width = 'Opt'), fixed_thead = T)
+```
+*We visualize the Target Product Types to see the Volume of each of them
+```{r warning=FALSE, message=FALSE}
+library(ggplot2)
+ggplot(data = NP_Products_Types_PredictionsFinal_Grouped_Products, aes(y = ProductTypes, x = VolumeSales)) + geom_bar(stat = 'identity') +
+labs(title = 'Distribution of Predicted Volume to Target Product Types') +
+coord_flip()
+```
+
+
+We have two metrics to analyze the errors associated to our predictions. These metrics are MAE and RMSE. Since we added all the specific product types, we can find the average error using the MAE for some close predicted values and use RMSE for extreme predicted values. In our analysis we observed that there are some cases where we could not achieve this because of the small data set used for analysis.
+Generally, there is a drawback to our solutions as there are no enough observations in our data set used for the training.
+The Model seems to be good despite the limitations, this conclusion is arrived at due to the value we got from our error metrics RMSE and MAE which are 184 and 88 respectively. These values seems to be small and smaller values denote better results.
+
