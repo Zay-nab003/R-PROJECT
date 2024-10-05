@@ -1,0 +1,555 @@
+---
+title: "M3_T2_CUST_BRAND"
+author: "Salami Zainab Omobukola"
+goal: "TO PREDICT BRAND PREFERENCE"
+date: "02/07/2024"
+output:
+  html_document:
+    highlight: tango
+    number_sections: true
+    theme: cosmo
+    toc: true
+    toc_depth: 4
+    code_folding: hide
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#LOADING LIBRARIES
+
+```{r warning=FALSE,message=FALSE}
+library(readr)
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(caret)
+library(gbm)
+library(pls)
+library(C50)
+library(randomForest)
+library(ipred)
+library(e1071)
+library(adabag)
+library(STAT)
+library(rFerns)
+library(ranger)
+```
+
+# INTRODUCTION
+Blackwell Electronics recently conducted a survey to understand the brand preferences of their customers, with the goal of determining which of two computer brands their customers prefer. This information is crucial for Blackwell Electronics as it will guide their strategic relationship with the computer manufacturers. However, not all survey responses captured the brand preference data.
+
+To address this issue, we aim to predict the missing brand preference data using customer responses to other survey questions such as salary, age, and other demographic information. This project involves applying and optimizing two decision tree classification methods in R: C5.0 and RandomForest. By comparing the performance of these classifiers, we will determine which method is more effective for predicting brand preference.
+
+The data set labeled CompleteResponses.csv, containing approximately 10,000 fully answered surveys, will be used to train and validate our models. The SurveyIncomplete.csv data set, which contains incomplete survey responses, will be used to apply the trained model and predict the missing brand preferences.
+
+The final goal is to provide a comprehensive analysis and prediction of brand preferences to Blackwell Electronics' sales team, helping them make informed strategic decisions.
+
+
+## TO KNOW THE MODELS WE HAVE AT OUR DISPOSAL
+```{r}
+available_models <- modelLookup()
+```
+
+
+# LOADING DATASET
+
+```{r}
+DF<-read.csv('CompleteResponses.csv')
+SIC <- read.csv('SurveyIncomplete.csv')
+```
+
+## Displaying the attributes of DF
+```{r}
+# attributes(DF)
+```
+## Summary statistics of DF
+```{r}
+summary(DF)
+```
+## Structure of DF
+```{r}
+str(DF)
+```
+## Names of columns in DF
+```{r}
+names(DF)
+```
+
+# DATA PREPARATION/DATA PREPROCESSING
+Check for Duplicates
+```{r}
+# Checking for duplicates
+Duplicates <- DF[duplicated(DF), ]
+```
+*I observed that they're no duplicates in our dataset
+
+
+## Checking for missing values
+```{r}
+# Checking for missing values
+colSums(is.na(DF))
+```
+*The result above shows that they're no missing values
+
+
+##Check for Outliers
+*Checking for Outliers in Age, Credit and Salary
+{r}
+
+```{r}
+boxplot(DF$age, main = "Boxplot of Age")
+```
+```{r}
+boxplot(DF$credit, main = "Boxplot of Credit")
+```
+```{r}
+boxplot(DF$salary, main = "Boxplot of Salary")
+```
+
+# DATA TRANSFORMATION
+
+*We will convert elevel, car, zipcode, and brand from numerical to categorical for both DF and SIC
+
+```{r}
+DF$elevel<-factor(DF$elevel)
+DF$car<-factor(DF$car)
+DF$zipcode<-factor(DF$zipcode)
+DF$brand<-factor(DF$brand)
+```
+
+```{r}
+SIC$elevel<-factor(SIC$elevel)
+SIC$car<-factor(SIC$car)
+SIC$zipcode<-factor(SIC$zipcode)
+SIC$brand<-factor(SIC$brand)
+```
+
+## Structure of DF after transformation
+```{r}
+str(DF)
+```
+## Structure of SIC after transformation
+```{r}
+str(SIC)
+```
+## MAPPING
+
+*MAPPING ALL THE CATEGORICAL VARIABLES
+##DF
+```{r}
+# Define a named vector for mapping
+factor_to_elevel <- c("0" = "Less than High School Degree", "1" = "High School Degree", "2" = "Some College", "3" = "4-year College Degree", "4" = "Master's, Doctoral or Professional Degree")
+
+factor_to_car <- c("1" = "BMW", "2" = "Buick", "3" = "Cadillac", "4" = " Chevrolet", "5" = " Chrysler", "6" = "Dodge", "7" = "Ford", "8" = "Honda", "9" = "Hyundai", "10" = " Jeep", "11" = "Kia", "12" = "Lincoln", "13" = "Mazda", "14" = "Mercedes Benz", "15" = "Mitsubishi", "16" = "Nissan", "17" = "Ram", "18" = "Subaru", "19" = "Toyota", "20" = "None of the above")
+
+factor_to_zipcode <- c("0" = "New England", "1" = "Mid-Atlantic", "2" = "East North Central", "3" = "West North Central", "4" = "South Atlantic", "5" = "East South Central", "6" = "West South Central", "7" = "Mountain", "8" = "Pacific")
+
+factor_to_brand <- c("0" = "Acer", "1" = "Sony")
+```
+
+```{r}
+# mapping vector object to the categorical variables
+DF$elevel <- factor_to_elevel[DF$elevel]
+DF$car <- factor_to_car[DF$car]
+DF$zipcode <- factor_to_zipcode[DF$zipcode]
+DF$brand <- factor_to_brand[DF$brand]
+```
+
+##SIC
+```{r}
+# Define a named vector for mapping
+factor_to_elevel <- c("0" = "Less than High School Degree", "1" = "High School Degree", "2" = "Some College", "3" = "4-year College Degree", "4" = "Master's, Doctoral or Professional Degree")
+
+factor_to_car <- c("1" = "BMW", "2" = "Buick", "3" = "Cadillac", "4" = " Chevrolet", "5" = " Chrysler", "6" = "Dodge", "7" = "Ford", "8" = "Honda", "9" = "Hyundai", "10" = " Jeep", "11" = "Kia", "12" = "Lincoln", "13" = "Mazda", "14" = "Mercedes Benz", "15" = "Mitsubishi", "16" = "Nissan", "17" = "Ram", "18" = "Subaru", "19" = "Toyota", "20" = "None of the above")
+
+factor_to_zipcode <- c("0" = "New England", "1" = "Mid-Atlantic", "2" = "East North Central", "3" = "West North Central", "4" = "South Atlantic", "5" = "East South Central", "6" = "West South Central", "7" = "Mountain", "8" = "Pacific")
+
+factor_to_brand <- c("0" = "Acer", "1" = "Sony")
+```
+
+```{r}
+# mapping vector object to the categorical variables
+SIC$elevel <- factor_to_elevel[SIC$elevel]
+SIC$car <- factor_to_car[SIC$car]
+SIC$zipcode <- factor_to_zipcode[SIC$zipcode]
+SIC$brand <- factor_to_brand[SIC$brand]
+```
+
+## Removing the Brand Column
+```{r}
+SIC <- SIC %>% select(-brand)
+```
+
+## FEATURE ENGINEERING
+*Create a new variable age-range using the age attribute for DF and SIC
+##DF
+```{r}
+DF$age_range <- cut(DF$age, breaks = c(17, 30, 50, 100), labels = c("18-30 Years", "31-50 Years", ">50 Years"))
+```
+
+##SIC
+```{r}
+SIC$age_range <- cut(SIC$age, breaks = c(17, 30, 50, 100), labels = c("18-30 Years", "31-50 Years", ">50 Years"))
+```
+
+# EDA (Exploratory Data Analysis)
+## Univariance Analysis
+```{r}
+d <- ggplot(DF,aes(car))
+d + geom_bar() +
+scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+## Bivariant Analysis
+```{r}
+f <- ggplot(DF, aes(brand, age))
+f + geom_col()
+```
+
+```{r}
+e <- ggplot(DF, aes(age, salary))
+e + geom_smooth()
+```
+
+```{r}
+g <- ggplot(DF, aes(elevel, zipcode))
+g + geom_count()+
+scale_x_discrete(guide = guide_axis(angle = 60))
+```
+
+```{r}
+f <- ggplot(DF, aes(car, age))
+f + geom_boxplot() +
+scale_x_discrete(guide = guide_axis(angle = 60))
+```
+
+
+## Multivariate Analysis
+```{r}
+ggplot(DF, aes(x=age, y=salary, col=brand)) + 
+  geom_point() +
+  geom_smooth() + 
+  labs(x = "Age", y= "Salary", title ="Multivariate Relationaship between Age, Salary and Brand")
+```
+
+```{r}
+ggplot(DF, aes(x=brand, y=salary, fill=brand)) +
+geom_boxplot()+labs(x="salary", title="A Boxplot of Salary and Brand",
+subtitle = "Showing salary with 20 categories", caption = "Salary to Brand",
+alt = "Salary to brand-Count in frequency")
+```
+
+
+
+## Setting Seed
+```{r}
+set.seed(107)
+inTrain <- createDataPartition(y = DF$brand, p = .75, list = FALSE)
+```
+
+```{r}
+str(inTrain)
+```
+
+```{r}
+training <- DF[inTrain, ]
+```
+
+
+```{r}
+testing <- DF[-inTrain, ]
+```
+
+```{r}
+nrow(training)
+```
+
+```{r}
+nrow(testing)
+```
+
+```{r}
+# training
+```
+
+
+# MODELLING
+
+## Setting Seed
+```{r}
+set.seed(107)
+inTrain <- createDataPartition(y = DF$brand, p = .75, list = FALSE)
+```
+
+```{r}
+str(inTrain)
+```
+
+```{r}
+training <- DF[inTrain, ]
+```
+
+```{r}
+testing <- DF[-inTrain, ]
+```
+
+```{r}
+nrow(training)
+```
+
+```{r}
+nrow(testing)
+```
+
+```{r}
+# training
+```
+
+
+## Train Control
+
+```{r}
+ctrl <- trainControl(method = 'cv')
+```
+
+```{r warning=FALSE, message=FALSE}
+#plsFit <- train(
+  #brand ~ .,
+  #data = training,
+  #method = "pls",
+  #preproc = c("center", "scale")
+  #tuneLength = 15,
+  #verbose = FALSE,
+  ##added
+  #trcontrol = ctrl,
+  #verbosity = 0
+#)
+load(file = 'plsFit.rdata')
+```
+
+## Predicting brand using the plsFit model
+```{r}
+pls_brand_predict <- predict(plsFit,testing)
+```
+
+```{r}
+str(testing$brand)
+```
+## Ensuring brand in testing set is a factor
+```{r}
+testing$brand <- factor(testing$brand)
+```
+
+## Creating confusion matrix for plsFit predictions
+```{r}
+# Creating confusion matrix
+pls_CONFUSSION_MATRIX <- confusionMatrix(data=pls_brand_predict, reference = testing$brand)
+pls_CONFUSSION_MATRIX
+```
+
+## Predicting brand using the GBMFit model
+```{r warning=FALSE, message=FALSE}
+#GBMFit <- train
+  #brand ~ .,
+  #data = training,
+  #method = "gbm"
+  #preproc = c("center", "scale")
+  #tuneLength = 15,
+  #verbose = FALSE,
+  ##added
+  #trcontrol = ctrl,
+  #verbosity = 0
+load(file = 'GBMFit.rdata')
+```
+
+## Ensuring brand in testing set is a factor
+```{r}
+GBM_brand_predict <- predict(GBMFit,testing)
+```
+
+## Creating confusion matrix for GBMFit predictions
+```{r}
+# Creating confusion matrix
+GBM_CONFUSSION_MATRIX <- confusionMatrix(data=GBM_brand_predict, reference = testing$brand)
+GBM_CONFUSSION_MATRIX
+```
+
+## Predicting brand using the knnFit model
+```{r warning=FALSE, message=FALSE}
+#knnFit <- train(
+  #brand ~ .,
+  #data = training,
+  #method = "knn"
+  #preproc = c("center", "scale")
+  #tuneLength = 15,
+  #verbose = FALSE,
+  ##added
+  #trcontrol = ctrl,
+  #verbosity = 0
+#)
+load(file = 'knnFit.rdata')
+```
+```{r}
+knnFit
+```
+
+## Ensuring brand in testing set is a factor
+```{r}
+knn_brand_predict <- predict(knnFit,testing)
+```
+
+## Creating confusion matrix for knnFit predictions
+```{r}
+# Creating confusion matrix
+knn_CONFUSSION_MATRIX <- confusionMatrix(data=knn_brand_predict, reference = testing$brand)
+knn_CONFUSSION_MATRIX
+```
+
+## Predicting brand using the c5Fit model
+```{r}
+#c5Fit <- train(
+  #brand ~ .,
+  #data = training,
+  #method = "C5.0"
+#)
+load(file = 'c5Fit.rdata')
+```
+```{r}
+c5Fit
+```
+
+## Ensuring brand in testing set is a factor
+```{r}
+c5_brand_predict <- predict(c5Fit,testing)
+```
+
+## Creating confusion matrix for c5Fit predictions
+```{r}
+# Creating confusion matrix
+c5_CONFUSSION_MATRIX <- confusionMatrix(data=c5_brand_predict, reference = testing$brand)
+c5_CONFUSSION_MATRIX
+```
+
+## Predicting brand using the rFFit model
+```{r}
+#rFFit <- train(
+#brand ~ .,
+#data = training,
+#method = "rFerns")
+load(file = 'rFFit.rdata')
+```
+```{r}
+rFFit
+```
+
+## Ensuring brand in testing set is a factor
+```{r}
+rF_brand_predict <- predict(rFFit,testing)
+```
+
+## Creating confusion matrix for rFFit predictions
+```{r}
+# Creating confusion matrix
+rF_CONFUSSION_MATRIX <- confusionMatrix(data=rF_brand_predict, reference = testing$brand)
+rF_CONFUSSION_MATRIX
+```
+
+## Predicting brand using the rangerFit model
+```{r}
+#rangerFit <- train(
+#brand ~ .,
+#data = training,
+#method = "ranger")
+load(file = 'rangerFit.rdata')
+```
+
+```{r}
+rangerFit
+```
+## Ensuring brand in testing set is a factor
+```{r}
+ranger_brand_predict <- predict(rangerFit,testing)
+```
+
+## Creating confusion matrix for rangerFit predictions
+```{r}
+# Creating confusion matrix
+ranger_CONFUSSION_MATRIX <- confusionMatrix(data=ranger_brand_predict, reference = testing$brand)
+ranger_CONFUSSION_MATRIX
+```
+
+## RESAMPLING
+```{r}
+# RESAMPLING FOR THE BEST PERFORMING MODEL
+resamps_Brand <- resamples(list(pls = plsFit, GBM = GBMFit, knn = knnFit, c5 = c5Fit, rFerns = rFFit, ranger = rangerFit))
+summary(resamps_Brand)
+```
+
+## TUNING GRID
+```{r}
+# Define the tuning grid
+tuneGrid <- expand.grid(.mtry = 34, 
+                        .splitrule = "extratrees",
+                        .min.node.size = 1)
+# Train the model with parameter tuning
+rangerFit_Final <- train(
+  brand ~ .,
+  data = training,
+  method = "ranger",
+  tuneGrid = tuneGrid,
+  trControl = trainControl(method = "cv", number = 5)
+)
+```
+
+```{r}
+rangerFit_Final
+```
+```{r}
+ ranger_brand_predict_Final <- predict(rangerFit_Final,SIC)
+```
+
+```{r}
+ranger_brand_predict_Final
+```
+## Combining DataFrames by Columns
+```{r}
+# Combine data frames by columns
+combined_data <- cbind(SIC, ranger_brand_predict_Final)
+```
+
+# RECOMMENDATION
+
+Based on the analysis conducted using the C5.0, Ranger, KNN, GBM and Rferns classification methods, we recommend the following approach for predicting the brand preferences of Blackwell Electronics customers:
+
+Adopt the Ranger Classifier: If the Ranger classifier shows better performance metrics (such as accuracy, precision, recall, and F1 score) compared to the C5.0, KNN, GBM and Rferns classifier, we recommend using Ranger for the final prediction of brand preferences. Ranger typically handles large datasets with higher accuracy and robustness.
+
+Model Optimization and Regular Monitoring: Ensure continuous optimization of the selected model by periodically retraining it with new data to maintain its accuracy and relevance. This is crucial as customer preferences and market dynamics can change over time.
+
+Integration into the Sales Process: Integrate the predictive model into the sales teams workflow. This can be achieved by developing an easy-to-use interface where sales team members can input new customer data and obtain brand preference predictions quickly.
+
+Further Exploration of Additional Features: Consider collecting and incorporating additional features that might improve the model's accuracy. For example, including behavioral data or more detailed customer feedback can provide deeper insights.
+
+Training and Support: Provide training sessions for the sales team to ensure they understand how to use the model effectively. Continuous support should be available to address any issues or questions that may arise during the initial implementation phase.
+
+
+
+# CONCLUSION
+
+In conclusion, the project successfully demonstrated the ability to predict missing brand preferences in incomplete survey responses using machine learning techniques in R. By applying and comparing five decision tree classification methods, C5.0, KNN, GBM, Rferns and Ranger, we were able to determine the more effective model for this specific task.
+
+Key findings include:
+
+Model Performance: The Ranger classifier generally outperformed the C5.0, KNN, GBM, Rferns classifier in terms of prediction accuracy and robustness, making it the preferred model for this task.
+
+Predictive Accuracy: The chosen model demonstrated high predictive accuracy, indicating that customer responses to survey questions (such as income, age, etc.) are strong indicators of brand preference.
+
+Implementation Feasibility: Integrating the predictive model into the sales teams workflow is feasible and can significantly enhance decision-making processes related to brand preference strategies.
+
+By leveraging the predictive power of the Ranger classifier, Blackwell Electronics can confidently fill in the missing brand preference data from the incomplete surveys. This will enable the company to make informed strategic decisions and strengthen its relationships with computer manufacturers.
+
+The results of this project highlight the potential of using advanced analytics and machine learning to address business challenges and improve decision-making processes.
+
+
